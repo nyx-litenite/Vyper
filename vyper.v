@@ -20,6 +20,11 @@ struct Vec {
 	y int
 }
 
+fn (mut v Vec) randomize(width int, height int) {
+	v.x = rand.int_in_range(block_size, width-block_size)
+	v.y = rand.int_in_range(block_size, height-block_size)
+}
+
 struct BodyPart {
 	mut:
 	pos Vec = {x : block_size y: block_size}
@@ -111,6 +116,13 @@ fn (s Snake) get_tail() BodyPart {
 	return s.body[s.body.len-1]
 }
 
+fn (mut s Snake) randomize() {
+	mut pos := s.get_head().pos
+	pos.randomize(s.app.width, s.app.height)
+	
+	s.body[0].pos = pos
+}
+
 struct Rat {
 mut:
 	pos Vec = {x : block_size, y : block_size}
@@ -120,8 +132,7 @@ mut:
 }
 
 fn (mut r Rat) randomize() {
-	r.pos.x = rand.int_in_range(block_size, r.app.width-block_size)
-	r.pos.y = rand.int_in_range(block_size, r.app.height-block_size)
+	r.pos.randomize(r.app.width, r.app.height)
 }
 
 
@@ -142,6 +153,7 @@ fn init(x voidptr) {
 	app.height = h
 	
 	mut snake := Snake{ body : []BodyPart{len: 1, init: BodyPart{}} app: app}
+	snake.randomize()
 	mut rat := Rat{app: app}
 	rat.randomize()
 	app.snake = snake
