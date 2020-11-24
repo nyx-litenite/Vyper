@@ -7,6 +7,8 @@ const (
 	grey       = tui.Color{150, 150, 150}
 	white      = tui.Color{255, 255, 255}
 	blue       = tui.Color{0, 0, 255}
+	red        = tui.Color{255, 0, 0}
+	black      = tui.Color{0, 0, 0}
 )
 
 enum Orientation {
@@ -16,10 +18,30 @@ enum Orientation {
 	left
 }
 
+enum GameState {
+	pause
+	main
+	gameover
+	game
+}
+
 struct Vec {
 mut:
 	x int
 	y int
+}
+
+fn (v Vec) facing() Orientation {
+	result := if v.x >= 0 {
+		Orientation.right
+	} else if v.x < 0 {
+		Orientation.left
+	} else if v.y >= 0 {
+		Orientation.bottom
+	} else {
+		Orientation.top
+	}
+	return result
 }
 
 fn (mut v Vec) randomize(width int, height int) {
@@ -38,7 +60,7 @@ mut:
 	x: block_size
 	y: block_size
 }
-	color  ui.Color = green
+	color  tui.Color = green
 	facing Orientation = .top
 }
 
@@ -157,13 +179,21 @@ fn (s Snake) get_tail() BodyPart {
 fn (mut s Snake) randomize() {
 	mut pos := s.get_head().pos
 	pos.randomize(s.app.width, s.app.height)
-	mut vel := Vec{
-		x: 0
-		y: 0
-	}
-	vel.r_velocity(1, 1)
-	s.velocity = vel
+	s.velocity.r_velocity(1, 1)
+	s.direction = s.velocity.facing()
 	s.body[0].pos = pos
+}
+
+fn (s Snake) check_overlap() bool {
+	h := s.get_head()
+	head_pos := h.pos
+	for i in 3 .. s.length() {
+		piece_pos := s.body[i].pos
+		if head_pos.x == piece_pos.x && head_pos.y == piece_pos.y {
+			return true
+		}
+	}
+	return false
 }
 
 struct Rat {
@@ -172,8 +202,8 @@ mut:
 	x: block_size
 	y: block_size
 }
-	captured bool = false
-	color    ui.Color = grey
+	captured bool
+	color    tui.Color = grey
 	app      &App
 }
 
@@ -183,12 +213,13 @@ fn (mut r Rat) randomize() {
 
 struct App {
 mut:
-	tui    &ui.Context = 0
+	tui    &tui.Context = 0
 	snake  Snake
 	rat    Rat
 	width  int
 	height int
 	redraw bool = true
+	state  GameState = .game
 }
 
 fn init(x voidptr) {
@@ -209,7 +240,7 @@ fn init(x voidptr) {
 	app.rat = rat
 }
 
-fn event(e &ui.Event, x voidptr) {
+fn event(e &tui.Event, x voidptr) {
 	mut app := &App(x)
 	match e.typ {
 		.mouse_down {}
@@ -227,7 +258,6 @@ fn event(e &ui.Event, x voidptr) {
 			}
 			if e.code == .c {
 			}
-			// app.rects.clear() }
 			else if e.code == .escape {
 				exit(0)
 			}
@@ -237,23 +267,38 @@ fn event(e &ui.Event, x voidptr) {
 	app.redraw = true
 }
 
+fn (mut a App) update() {
+	a.snake.move()
+	overlap := a.snake.check_overlap()
+	if overlap {
+		a.state = .gameover
+	}
+}
+
 fn frame(x voidptr) {
 	mut app := &App(x)
 	if !app.redraw {
 		return
 	}
 	app.tui.clear()
-	app.snake.move()
-	app.draw_score()
-	app.draw_rat()
-	app.draw_snake()
-	if app.check_capture() {
-		app.rat.randomize()
-		app.snake.grow()
+	app.update()
+	if app.state == .gameover {
+		app.draw_gameover()
+		app.redraw = false
+	} else {
+		app.draw_score()
+		app.draw_rat()
+		app.draw_snake()
+		$if verbose ? {
+			app.draw_debug()
+		}
+		if app.check_capture() {
+			app.rat.randomize()
+			app.snake.grow()
+		}
 	}
 	app.tui.reset_bg_color()
 	app.tui.flush()
-	app.redraw = false
 }
 
 fn (mut a App) move_snake(direction Orientation) {
@@ -295,6 +340,37 @@ fn (mut a App) draw_score() {
 	a.tui.draw_text(a.width - (2 * block_size), block_size, '${score:03d}')
 }
 
+fn (mut a App) draw_debug() {
+	a.tui.set_color(blue)
+	a.tui.set_bg_color(grey)
+	snake := a.snake
+	rat := a.rat
+	a.tui.draw_text(block_size, block_size, 'Vx: ${snake.velocity.x:+02d} Vy: ${snake.velocity.y:+02d}')
+	a.tui.draw_text(block_size, 2 * block_size, 'F: $snake.direction')
+	snake_head := snake.get_head()
+	a.tui.draw_text(block_size, 4 * block_size, 'Sx: ${snake_head.pos.x:+03d} Sy: ${snake_head.pos.y:+03d}')
+	a.tui.draw_text(block_size, 5 * block_size, 'Rx: ${rat.pos.x:+03d} Ry: ${rat.pos.y:+03d}')
+}
+
+fn (mut a App) draw_gameover() {
+	a.tui.set_bg_color(white)
+	a.tui.draw_rect(0, 0, a.width, a.height)
+	a.tui.set_color(red)
+	a.tui.set_bg_color(black)
+	a.snake.body.clear()
+	a.rat.pos = Vec{
+		x: -1
+		y: -1
+	}
+	a.tui.draw_text(block_size, block_size, '   #####                         #######                       ')
+	a.tui.draw_text(block_size, 2 * block_size, '  #     #   ##   #    # ######   #     # #    # ###### #####   ')
+	a.tui.draw_text(block_size, 3 * block_size, '  #        #  #  ##  ## #        #     # #    # #      #    #  ')
+	a.tui.draw_text(block_size, 4 * block_size, '  #  #### #    # # ## # #####    #     # #    # #####  #    #  ')
+	a.tui.draw_text(block_size, 5 * block_size, '  #     # ###### #    # #        #     # #    # #      #####   ')
+	a.tui.draw_text(block_size, 6 * block_size, '  #     # #    # #    # #        #     #  #  #  #      #   #   ')
+	a.tui.draw_text(block_size, 6 * block_size, '   #####  #    # #    # ######   #######   ##   ###### #    #  ')
+}
+
 mut app := &App{}
 app.tui = tui.init({
 	user_data: app
@@ -302,6 +378,6 @@ app.tui = tui.init({
 	frame_fn: frame
 	init_fn: init
 	hide_cursor: true
-	frame_rate: 30
+	frame_rate: 15
 })
 app.tui.run()
