@@ -5,6 +5,7 @@ import rand
 // define some global constants
 const (
 	block_size = 1
+	buffer = 10
 	green      = termui.Color{0, 255, 0}
 	grey       = termui.Color{150, 150, 150}
 	white      = termui.Color{255, 255, 255}
@@ -26,6 +27,7 @@ enum GameState {
 	pause
 	gameover
 	game
+	oob // snake out-of-bounds
 }
 
 // simple 2d vector representation
@@ -176,9 +178,16 @@ fn (s Snake) get_tail() BodyPart {
 
 // randomize randomizes position and veolcity of snake
 fn (mut s Snake) randomize() {
+	speeds := [-2,0,2]
 	mut pos := s.get_head().pos
-	pos.randomize(block_size, block_size, s.app.width, s.app.height)
-	s.velocity.randomize(-1 * block_size, -1 * block_size, block_size, block_size)
+	pos.randomize(block_size + buffer, block_size + buffer, s.app.width - buffer, s.app.height - buffer)
+
+	for pos.x % 2 != 0 && pos.x < buffer && pos.x > s.app.width - buffer {
+		pos.randomize(block_size + buffer, block_size + buffer, s.app.width - buffer, s.app.height - buffer)
+	}
+
+	s.velocity.y = rand.int_in_range(-1 * block_size, block_size)
+	s.velocity.x = speeds[rand.int_in_range(0, speeds.len)]
 	s.direction = s.velocity.facing()
 	s.body[0].pos = pos
 }
@@ -194,6 +203,12 @@ fn (s Snake) check_overlap() bool {
 		}
 	}
 	return false
+}
+
+fn (s Snake) check_out_of_bounds() bool {
+	h := s.get_head()
+
+	return h.pos.x + s.velocity.x < block_size || h.pos.x + s.velocity.x > s.app.width - s.velocity.x || h.pos.y + s.velocity.y <= block_size || h.pos.y + s.velocity.y > s.app.height - block_size - s.velocity.y
 }
 
 // draw draws the parts of the snake
@@ -229,7 +244,7 @@ mut:
 
 // randomize spawn the rat in a new spot within the playable field
 fn (mut r Rat) randomize() {
-	r.pos.randomize(2 * block_size, 2 * block_size, r.app.width - block_size, r.app.height - block_size)
+	r.pos.randomize(2 * block_size + buffer, 2 * block_size + buffer, r.app.width - block_size - buffer, r.app.height - block_size - buffer)
 }
 
 struct App {
@@ -309,6 +324,13 @@ fn frame(x voidptr) {
 fn (mut a App) update() {
 	if a.state == .game {
 		a.snake.move()
+		if a.snake.check_out_of_bounds() {
+			$if verbose ? {
+				a.snake.body[0].color = red
+			} $else {
+				a.state = .oob
+			}
+		}
 		if a.snake.check_overlap() {
 			a.state = .gameover
 			return
@@ -347,6 +369,9 @@ fn (mut a App) draw() {
 	if a.redraw {
 		a.termui.set_bg_color(black)
 		a.draw_gamescreen()
+		if a.state == .oob {
+			a.state = .gameover
+		}
 	}
 	// write to the screen
 	a.termui.reset_bg_color()
