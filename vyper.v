@@ -92,7 +92,7 @@ fn (mut s Snake) impulse(direction Orientation) {
 			vec.y = -1 * block_size
 		}
 		.right {
-			vec.x = block_size
+			vec.x = 2*block_size
 			vec.y = 0
 		}
 		.bottom {
@@ -100,7 +100,7 @@ fn (mut s Snake) impulse(direction Orientation) {
 			vec.y = block_size
 		}
 		.left {
-			vec.x = -1 * block_size
+			vec.x = -2 * block_size
 			vec.y = 0
 		}
 	}
@@ -326,8 +326,7 @@ fn (mut a App) draw() {
 	a.termui.clear()
 	a.termui.set_bg_color(white)
 	a.termui.draw_empty_rect(1, 1, a.width, a.height)
-	a.termui.set_bg_color(black)
-	a.termui.draw_rect(2, 2, a.width - 1, a.height - 1)
+	
 	// determine if a special screen needs to be draw
 	match a.state {
 		.gameover {
@@ -346,6 +345,7 @@ fn (mut a App) draw() {
 	a.termui.draw_text(3 * block_size, a.height - (2 * block_size), 'p - (un)pause r - reset q - quit')
 	// draw the snake, rat, and score if appropriate
 	if a.redraw {
+		a.termui.set_bg_color(black)
 		a.draw_gamescreen()
 	}
 	// write to the screen
@@ -362,9 +362,9 @@ fn (mut a App) move_snake(direction Orientation) {
 fn (a App) check_capture() bool {
 	snake_pos := a.snake.get_head().pos
 	rat_pos := a.rat.pos
-	return snake_pos.x < rat_pos.x + block_size &&
-		snake_pos.x + block_size > rat_pos.x && snake_pos.y < rat_pos.y + block_size && snake_pos.y +
-		block_size > rat_pos.y
+	return snake_pos.x <= rat_pos.x + block_size &&
+		snake_pos.x + block_size >= rat_pos.x && snake_pos.y <= rat_pos.y + block_size && snake_pos.y +
+		block_size >= rat_pos.y
 }
 
 fn (mut a App) draw_snake() {
@@ -412,19 +412,22 @@ fn (mut a App) draw_debug() {
 
 fn (mut a App) draw_gameover() {
 	a.termui.set_bg_color(white)
-	a.termui.draw_rect(0, 0, a.width, a.height)
 	a.termui.set_color(red)
 	a.rat.pos = Vec{
 		x: -1
 		y: -1
 	}
-	a.termui.draw_text(block_size, 2 * block_size, '   #####                         #######                       ')
-	a.termui.draw_text(block_size, 3 * block_size, '  #     #   ##   #    # ######   #     # #    # ###### #####   ')
-	a.termui.draw_text(block_size, 4 * block_size, '  #        #  #  ##  ## #        #     # #    # #      #    #  ')
-	a.termui.draw_text(block_size, 5 * block_size, '  #  #### #    # # ## # #####    #     # #    # #####  #    #  ')
-	a.termui.draw_text(block_size, 6 * block_size, '  #     # ###### #    # #        #     # #    # #      #####   ')
-	a.termui.draw_text(block_size, 7 * block_size, '  #     # #    # #    # #        #     #  #  #  #      #   #   ')
-	a.termui.draw_text(block_size, 8 * block_size, '   #####  #    # #    # ######   #######   ##   ###### #    #  ')
+
+	x_offset := '   #####                        '.len // take half of a line from the game over text and store the length
+	start_x := (a.width/2) - x_offset
+
+	a.termui.draw_text(start_x, (a.height/2) - 3 * block_size, '   #####                         #######                       ')
+	a.termui.draw_text(start_x, (a.height/2) - 2 * block_size, '  #     #   ##   #    # ######   #     # #    # ###### #####   ')
+	a.termui.draw_text(start_x, (a.height/2) - 1 * block_size, '  #        #  #  ##  ## #        #     # #    # #      #    #  ')
+	a.termui.draw_text(start_x, (a.height/2) - 0 * block_size, '  #  #### #    # # ## # #####    #     # #    # #####  #    #  ')
+	a.termui.draw_text(start_x, (a.height/2) + 1 * block_size, '  #     # ###### #    # #        #     # #    # #      #####   ')
+	a.termui.draw_text(start_x, (a.height/2) + 2 * block_size, '  #     # #    # #    # #        #     #  #  #  #      #   #   ')
+	a.termui.draw_text(start_x, (a.height/2) + 3 * block_size, '   #####  #    # #    # ######   #######   ##   ###### #    #  ')
 }
 
 mut app := &App{}
@@ -434,6 +437,6 @@ app.termui = termui.init({
 	frame_fn: frame
 	init_fn: init
 	hide_cursor: true
-	frame_rate: 15
+	frame_rate: 10
 })
 app.termui.run()
