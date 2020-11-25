@@ -1,6 +1,8 @@
+// import modules for use in app
 import term.ui as termui
 import rand
 
+// define some global constants
 const (
 	block_size = 1
 	green      = termui.Color{0, 255, 0}
@@ -11,6 +13,7 @@ const (
 	black      = termui.Color{0, 0, 0}
 )
 
+// what edge of the screen are you facing
 enum Orientation {
 	top
 	right
@@ -18,19 +21,21 @@ enum Orientation {
 	left
 }
 
+// what's the current state of the game
 enum GameState {
 	pause
-	main
 	gameover
 	game
 }
 
+// simple 2d vector representation
 struct Vec {
 mut:
 	x int
 	y int
 }
 
+// determine orientation from vector (hacky way to set facing from velocity)
 fn (v Vec) facing() Orientation {
 	result := if v.x >= 0 {
 		Orientation.right
@@ -44,20 +49,13 @@ fn (v Vec) facing() Orientation {
 	return result
 }
 
+// generate a random vector with x in [min_x, max_x] and y in [min_y, max_y]
 fn (mut v Vec) randomize(min_x int, min_y int, max_x int, max_y int) {
 	v.x = rand.int_in_range(min_x, max_x)
 	v.y = rand.int_in_range(min_y, max_y)
 }
 
-// ~ fn (mut v Vec) randomize(width int, height int) {
-// ~ v.x = rand.int_in_range(block_size, width - block_size)
-// ~ v.y = rand.int_in_range(block_size, height - block_size)
-// ~ }
-fn (mut v Vec) r_velocity(max_x int, max_y int) {
-	v.x = rand.int_in_range(-1 * block_size, block_size)
-	v.y = rand.int_in_range(-1 * block_size, block_size)
-}
-
+// part of snake's body representation
 struct BodyPart {
 mut:
 	pos    Vec = {
@@ -68,6 +66,7 @@ mut:
 	facing Orientation = .top
 }
 
+// snake representation
 struct Snake {
 mut:
 	app       &App
@@ -79,11 +78,13 @@ mut:
 }
 }
 
+// length returns the snake's current length
 fn (s Snake) length() int {
 	return s.body.len
 }
 
-fn (mut s Snake) impact(direction Orientation) {
+// impulse provides a impulse to change the snake's direction
+fn (mut s Snake) impulse(direction Orientation) {
 	mut vec := Vec{}
 	match direction {
 		.top {
@@ -107,16 +108,18 @@ fn (mut s Snake) impact(direction Orientation) {
 	s.velocity = vec
 }
 
+// move performs the calculations for the snake's movements
 fn (mut s Snake) move() {
 	mut i := s.body.len - 1
 	width := s.app.width
 	height := s.app.height
+	// move the parts of the snake as appropriate
 	for i = s.body.len - 1; i >= 0; i-- {
 		mut piece := s.body[i]
-		if i > 0 {
+		if i > 0 { // just move the body of the snake up one position
 			piece.pos = s.body[i - 1].pos
 			piece.facing = s.body[i - 1].facing
-		} else {
+		} else { // verify that the move is valid and move the head if so
 			piece.facing = s.direction
 			new_x := piece.pos.x + s.velocity.x
 			new_y := piece.pos.y + s.velocity.y
@@ -127,9 +130,11 @@ fn (mut s Snake) move() {
 	}
 }
 
+// grow add another part to the snake when it catches the rat
 fn (mut s Snake) grow() {
 	head := s.get_tail()
 	mut pos := Vec{}
+	// add the segment on the opposite side of the previous tail
 	match head.facing {
 		.bottom {
 			pos.x = head.pos.x
@@ -154,30 +159,35 @@ fn (mut s Snake) grow() {
 	}
 }
 
+// get_body gets the parts of the snakes body
 fn (s Snake) get_body() []BodyPart {
 	return s.body
 }
 
+// get_head get snake's head
 fn (s Snake) get_head() BodyPart {
 	return s.body[0]
 }
 
+// get_tail get snake's tail
 fn (s Snake) get_tail() BodyPart {
 	return s.body[s.body.len - 1]
 }
 
+// randomize randomizes position and veolcity of snake
 fn (mut s Snake) randomize() {
 	mut pos := s.get_head().pos
 	pos.randomize(block_size, block_size, s.app.width, s.app.height)
-	s.velocity.randomize(-1 * block_size, -1 * block_size, block_size, block_size) // r_velocity(1, 1)
+	s.velocity.randomize(-1 * block_size, -1 * block_size, block_size, block_size)
 	s.direction = s.velocity.facing()
 	s.body[0].pos = pos
 }
 
+// check_overlap determine if the snake's looped onto itself
 fn (s Snake) check_overlap() bool {
 	h := s.get_head()
 	head_pos := h.pos
-	for i in 3 .. s.length() {
+	for i in 2 .. s.length() {
 		piece_pos := s.body[i].pos
 		if head_pos.x == piece_pos.x && head_pos.y == piece_pos.y {
 			return true
@@ -186,6 +196,26 @@ fn (s Snake) check_overlap() bool {
 	return false
 }
 
+// draw draws the parts of the snake
+fn (s Snake) draw() {
+	mut a := s.app
+	for part in s.get_body() {
+		a.termui.set_bg_color(part.color)
+		a.termui.draw_rect(part.pos.x, part.pos.y, part.pos.x + block_size, part.pos.y + block_size)
+		$if verbose ? {
+			text := match part.facing {
+				.top { '^' }
+				.bottom { 'v' }
+				.right { '>' }
+				.left { '<' }
+			}
+			a.termui.set_color(white)
+			a.termui.draw_text(part.pos.x, part.pos.y, text)
+		}
+	}
+}
+
+// rat representation
 struct Rat {
 mut:
 	pos      Vec = {
@@ -197,6 +227,7 @@ mut:
 	app      &App
 }
 
+// randomize spawn the rat in a new spot within the playable field
 fn (mut r Rat) randomize() {
 	r.pos.randomize(2 * block_size, 2 * block_size, r.app.width - block_size, r.app.height - block_size)
 }
@@ -212,6 +243,7 @@ mut:
 	state  GameState = .game
 }
 
+// new_game setups the rat and snake for play
 fn (mut a App) new_game() {
 	mut snake := Snake{
 		body: []BodyPart{len: 1, init: BodyPart{}}
@@ -228,6 +260,7 @@ fn (mut a App) new_game() {
 	a.redraw = true
 }
 
+// initialize the app and record the width and height of the window
 fn init(x voidptr) {
 	mut app := &App(x)
 	w, h := app.termui.window_width, app.termui.window_height
@@ -236,6 +269,7 @@ fn init(x voidptr) {
 	app.new_game()
 }
 
+// event handles different events for the app as they occur
 fn event(e &termui.Event, x voidptr) {
 	mut app := &App(x)
 	match e.typ {
@@ -264,6 +298,14 @@ fn event(e &termui.Event, x voidptr) {
 	app.redraw = true
 }
 
+// frame perform actions on every tick
+fn frame(x voidptr) {
+	mut app := &App(x)
+	app.update()
+	app.draw()
+}
+
+// update perform any calculations that are needed before drawing
 fn (mut a App) update() {
 	if a.state == .game {
 		a.snake.move()
@@ -278,6 +320,7 @@ fn (mut a App) update() {
 	}
 }
 
+// draw write to the screen
 fn (mut a App) draw() {
 	// reset screen
 	a.termui.clear()
@@ -285,7 +328,7 @@ fn (mut a App) draw() {
 	a.termui.draw_empty_rect(1, 1, a.width, a.height)
 	a.termui.set_bg_color(black)
 	a.termui.draw_rect(2, 2, a.width - 1, a.height - 1)
-	// determine what to draw
+	// determine if a special screen needs to be draw
 	match a.state {
 		.gameover {
 			a.draw_gameover()
@@ -298,50 +341,24 @@ fn (mut a App) draw() {
 			a.redraw = true
 		}
 	}
+	a.termui.set_color(blue)
+	a.termui.set_bg_color(white)
+	a.termui.draw_text(3 * block_size, a.height - (2 * block_size), 'p - (un)pause r - reset q - quit')
+	// draw the snake, rat, and score if appropriate
 	if a.redraw {
-		$if verbose ? {
-			a.draw_debug()
-		}
-		a.draw_score()
-		a.draw_rat()
-		a.draw_snake()
+		a.draw_gamescreen()
 	}
+	// write to the screen
 	a.termui.reset_bg_color()
 	a.termui.flush()
 }
 
-fn frame(x voidptr) {
-	mut app := &App(x)
-	app.update()
-	app.draw()
-}
-
+// move_snake move the snake in specified direction
 fn (mut a App) move_snake(direction Orientation) {
-	a.snake.impact(direction)
+	a.snake.impulse(direction)
 }
 
-fn (mut a App) draw_snake() {
-	for part in a.snake.get_body() {
-		a.termui.set_bg_color(part.color)
-		a.termui.draw_rect(part.pos.x, part.pos.y, part.pos.x + block_size, part.pos.y + block_size)
-		$if verbose ? {
-			text := match part.facing {
-				.top { '^' }
-				.bottom { 'v' }
-				.right { '>' }
-				.left { '<' }
-			}
-			a.termui.set_color(white)
-			a.termui.draw_text(part.pos.x, part.pos.y, text)
-		}
-	}
-}
-
-fn (mut a App) draw_rat() {
-	a.termui.set_bg_color(a.rat.color)
-	a.termui.draw_rect(a.rat.pos.x, a.rat.pos.y, a.rat.pos.x + block_size, a.rat.pos.y + block_size)
-}
-
+// check_capture determine if the snake overlaps with the rat
 fn (a App) check_capture() bool {
 	snake_pos := a.snake.get_head().pos
 	rat_pos := a.rat.pos
@@ -350,16 +367,34 @@ fn (a App) check_capture() bool {
 		block_size > rat_pos.y
 }
 
+fn (mut a App) draw_snake() {
+	a.snake.draw()
+}
+
+fn (mut a App) draw_rat() {
+	a.termui.set_bg_color(a.rat.color)
+	a.termui.draw_rect(a.rat.pos.x, a.rat.pos.y, a.rat.pos.x + block_size, a.rat.pos.y + block_size)
+}
+
+fn (mut a App) draw_gamescreen() {
+	$if verbose ? {
+		a.draw_debug()
+	}
+	a.draw_score()
+	a.draw_rat()
+	a.draw_snake()
+}
+
 fn (mut a App) draw_score() {
-	a.termui.set_bg_color(grey)
 	a.termui.set_color(blue)
+	a.termui.set_bg_color(white)
 	score := a.snake.length() - 1
 	a.termui.draw_text(a.width - (2 * block_size), block_size, '${score:03d}')
 }
 
 fn (mut a App) draw_pause() {
 	a.termui.set_color(blue)
-	a.termui.draw_text(a.width / 2 - block_size, 3 * block_size, 'Paused!')
+	a.termui.draw_text((a.width / 2) - block_size, 3 * block_size, 'Paused!')
 }
 
 fn (mut a App) draw_debug() {
@@ -379,18 +414,17 @@ fn (mut a App) draw_gameover() {
 	a.termui.set_bg_color(white)
 	a.termui.draw_rect(0, 0, a.width, a.height)
 	a.termui.set_color(red)
-	a.termui.set_bg_color(black)
 	a.rat.pos = Vec{
 		x: -1
 		y: -1
 	}
-	a.termui.draw_text(block_size, 1 * block_size, '   #####                         #######                       ')
-	a.termui.draw_text(block_size, 2 * block_size, '  #     #   ##   #    # ######   #     # #    # ###### #####   ')
-	a.termui.draw_text(block_size, 3 * block_size, '  #        #  #  ##  ## #        #     # #    # #      #    #  ')
-	a.termui.draw_text(block_size, 4 * block_size, '  #  #### #    # # ## # #####    #     # #    # #####  #    #  ')
-	a.termui.draw_text(block_size, 5 * block_size, '  #     # ###### #    # #        #     # #    # #      #####   ')
-	a.termui.draw_text(block_size, 6 * block_size, '  #     # #    # #    # #        #     #  #  #  #      #   #   ')
-	a.termui.draw_text(block_size, 7 * block_size, '   #####  #    # #    # ######   #######   ##   ###### #    #  ')
+	a.termui.draw_text(block_size, 2 * block_size, '   #####                         #######                       ')
+	a.termui.draw_text(block_size, 3 * block_size, '  #     #   ##   #    # ######   #     # #    # ###### #####   ')
+	a.termui.draw_text(block_size, 4 * block_size, '  #        #  #  ##  ## #        #     # #    # #      #    #  ')
+	a.termui.draw_text(block_size, 5 * block_size, '  #  #### #    # # ## # #####    #     # #    # #####  #    #  ')
+	a.termui.draw_text(block_size, 6 * block_size, '  #     # ###### #    # #        #     # #    # #      #####   ')
+	a.termui.draw_text(block_size, 7 * block_size, '  #     # #    # #    # #        #     #  #  #  #      #   #   ')
+	a.termui.draw_text(block_size, 8 * block_size, '   #####  #    # #    # ######   #######   ##   ###### #    #  ')
 }
 
 mut app := &App{}
